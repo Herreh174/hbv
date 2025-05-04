@@ -1,142 +1,153 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Бронирование</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    label { display: block; margin-top: 10px; }
-    input, select, textarea { padding: 5px; width: 100%; max-width: 400px; }
-    .hidden { display: none; }
-    .btn { margin-top: 20px; padding: 10px 20px; }
-    .disabled { background: #ccc; pointer-events: none; }
+    body { font-family: sans-serif; max-width: 600px; margin: auto; }
+    label { display: block; margin-top: 1em; }
+    input, select, textarea, button { width: 100%; padding: 8px; margin-top: 0.5em; }
+    #calendar { margin-top: 1em; }
+    .disabled-date { color: #aaa; text-decoration: line-through; }
+    #guestForm, #submitButton { display: none; }
   </style>
 </head>
 <body>
-  <h1>Бронирование номера</h1>
+  <h2>Забронируйте номер</h2>
 
-  <label for="room">Выберите номер:</label>
-  <select id="room"></select>
+  <label>Выберите номер:
+    <select id="roomSelect"></select>
+  </label>
 
-  <label for="guests">Количество гостей:</label>
-  <input type="number" id="guests" min="1">
+  <label>Количество гостей:
+    <input type="number" id="guestCount" min="1" />
+  </label>
 
-  <label for="checkin">Дата заезда:</label>
-  <input type="date" id="checkin">
+  <label>Дата заезда:
+    <input type="date" id="checkIn" />
+  </label>
 
-  <label for="checkout">Дата выезда:</label>
-  <input type="date" id="checkout">
+  <label>Дата выезда:
+    <input type="date" id="checkOut" />
+  </label>
 
-  <button id="checkAvailability" class="btn disabled">Перейти к вводу данных</button>
+  <div id="calendar"></div>
 
-  <div id="guestInfo" class="hidden">
-    <label for="name">ФИО:</label>
-    <input type="text" id="name">
+  <button id="proceedButton" disabled>Перейти к вводу данных</button>
 
-    <label for="phone">Телефон:</label>
-    <input type="tel" id="phone" placeholder="8-(___)-___-__-__">
-
-    <label for="email">Email:</label>
-    <input type="email" id="email">
-
-    <label for="notes">Пожелания по размещению:</label>
-    <textarea id="notes"></textarea>
-
-    <button id="submitBooking" class="btn disabled">Забронировать</button>
+  <div id="guestForm">
+    <label>ФИО:
+      <input type="text" id="name" />
+    </label>
+    <label>Телефон:
+      <input type="tel" id="phone" placeholder="8-(XXX)-XXX-XX-XX" pattern="8-\(\d{3}\)-\d{3}-\d{2}-\d{2}" />
+    </label>
+    <label>Email:
+      <input type="email" id="email" />
+    </label>
+    <label>Пожелания:
+      <textarea id="wishes"></textarea>
+    </label>
+    <button id="submitButton">Забронировать</button>
   </div>
 
-  <div id="successModal" class="hidden">
-    <h2>Бронирование успешно!</h2>
-    <p id="bookingId"></p>
-  </div>
+  <div id="result"></div>
 
   <script>
-    const roomSelect = document.getElementById('room');
-    const guestsInput = document.getElementById('guests');
-    const checkinInput = document.getElementById('checkin');
-    const checkoutInput = document.getElementById('checkout');
-    const checkAvailabilityBtn = document.getElementById('checkAvailability');
-    const guestInfoDiv = document.getElementById('guestInfo');
-    const submitBtn = document.getElementById('submitBooking');
-    const successModal = document.getElementById('successModal');
-    const bookingIdP = document.getElementById('bookingId');
+    const apiUrl = 'https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec';
 
-    let roomsData = [];
+    let selectedRoom = null;
+    let roomData = {};
+    let busyDates = [];
 
-    // Загрузка списка номеров
-    function loadRooms() {
-      fetch('https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec?action=getRooms')
+    document.addEventListener("DOMContentLoaded", () => {
+      fetch(`${apiUrl}?action=getRooms`)
         .then(res => res.json())
         .then(data => {
-          roomsData = data;
+          const roomSelect = document.getElementById("roomSelect");
           data.forEach(room => {
-            const opt = document.createElement('option');
-            opt.value = room.room_id;
-            opt.textContent = `${room.room_name} — ${room.price}₽/ночь — ${room.capacity} гостей`;
-            roomSelect.appendChild(opt);
+            roomData[room.room_id] = room;
+            const option = document.createElement("option");
+            option.value = room.room_id;
+            option.textContent = `${room.room_name} — ${room.capacity} гостей — ${room.price}₽/ночь`;
+            roomSelect.appendChild(option);
           });
         });
+
+      document.getElementById("roomSelect").addEventListener("change", async (e) => {
+        selectedRoom = e.target.value;
+        const res = await fetch(`${apiUrl}?action=getBusyDates&room_id=${selectedRoom}`);
+        busyDates = await res.json();
+        renderCalendar();
+      });
+
+      ["checkIn", "checkOut", "guestCount"].forEach(id =>
+        document.getElementById(id).addEventListener("change", validateInputs)
+      );
+
+      document.getElementById("proceedButton").addEventListener("click", () => {
+        document.getElementById("guestForm").style.display = "block";
+        document.getElementById("submitButton").style.display = "block";
+      });
+
+      document.getElementById("submitButton").addEventListener("click", submitBooking);
+    });
+
+    function renderCalendar() {
+      const cal = document.getElementById("calendar");
+      cal.innerHTML = "<strong>Недоступные даты:</strong><br>" + busyDates.join(', ');
     }
 
-    // Проверка доступности
-    function checkAvailability() {
-      const roomId = roomSelect.value;
-      const guests = parseInt(guestsInput.value, 10);
-      const checkin = checkinInput.value;
-      const checkout = checkoutInput.value;
+    function validateInputs() {
+      const checkIn = document.getElementById("checkIn").value;
+      const checkOut = document.getElementById("checkOut").value;
+      const guests = +document.getElementById("guestCount").value;
+      if (!selectedRoom || !checkIn || !checkOut || guests < 1) return disableProceed();
 
-      if (!roomId || !guests || !checkin || !checkout || checkin >= checkout) return;
-
-      const selectedRoom = roomsData.find(r => r.room_id === roomId);
-      if (guests > selectedRoom.capacity) {
-        alert('Количество гостей превышает допустимое!');
-        return;
+      const start = new Date(checkIn);
+      const end = new Date(checkOut);
+      const datesToCheck = [];
+      while (start < end) {
+        datesToCheck.push(start.toISOString().split('T')[0]);
+        start.setDate(start.getDate() + 1);
       }
 
-      fetch(`https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec?action=checkAvailability&room_id=${roomId}&checkin=${checkin}&checkout=${checkout}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.available) {
-            checkAvailabilityBtn.classList.remove('disabled');
-            guestInfoDiv.classList.remove('hidden');
-          } else {
-            alert('Выбранные даты недоступны');
-          }
-        });
+      const conflict = datesToCheck.some(date => busyDates.includes(date));
+      const exceedsCapacity = guests > roomData[selectedRoom].capacity;
+
+      if (!conflict && !exceedsCapacity) {
+        document.getElementById("proceedButton").disabled = false;
+      } else {
+        disableProceed();
+      }
     }
 
-    // Отправка брони
-    function submitBooking() {
+    function disableProceed() {
+      document.getElementById("proceedButton").disabled = true;
+      document.getElementById("guestForm").style.display = "none";
+      document.getElementById("submitButton").style.display = "none";
+    }
+
+    async function submitBooking() {
       const payload = {
-        action: 'submitBooking',
-        room_id: roomSelect.value,
-        guests: guestsInput.value,
-        checkin: checkinInput.value,
-        checkout: checkoutInput.value,
-        name: document.getElementById('name').value,
-        phone: document.getElementById('phone').value,
-        email: document.getElementById('email').value,
-        notes: document.getElementById('notes').value,
+        action: "submitBooking",
+        room_id: selectedRoom,
+        guests: document.getElementById("guestCount").value,
+        checkIn: document.getElementById("checkIn").value,
+        checkOut: document.getElementById("checkOut").value,
+        name: document.getElementById("name").value,
+        phone: document.getElementById("phone").value,
+        email: document.getElementById("email").value,
+        wishes: document.getElementById("wishes").value
       };
 
-      fetch('https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            bookingIdP.textContent = `Ваш ID брони: ${data.bookingId}`;
-            successModal.classList.remove('hidden');
-          } else {
-            alert('Ошибка при бронировании');
-          }
-        });
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      document.getElementById("result").innerHTML = `<strong>Бронирование успешно!</strong><br>ID: ${result.bookingId}`;
     }
-
-    document.addEventListener('DOMContentLoaded', loadRooms);
-    checkAvailabilityBtn.addEventListener('click', checkAvailability);
-    submitBtn.addEventListener('click', submitBooking);
   </script>
 </body>
 </html>
