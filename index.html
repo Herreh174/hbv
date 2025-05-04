@@ -65,7 +65,7 @@
 
     // Загрузка списка номеров
     function loadRooms() {
-      fetch('https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec')
+      fetch('https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec?action=getRooms')
         .then(res => res.json())
         .then(data => {
           roomsData = data;
@@ -93,7 +93,7 @@
         return;
       }
 
-      fetch(`https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec?action=checkAvailability&room_id=${roomId}&checkin=${checkin}&checkout=${checkout}`)
+      fetch(`https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec?action=checkAvailability&room_id=${roomId}&checkin=${checkin}&checkout=${checkout}`)
         .then(res => res.json())
         .then(data => {
           if (data.available) {
@@ -119,7 +119,7 @@
         notes: document.getElementById('notes').value,
       };
 
-      fetch('https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec', {
+      fetch('https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
