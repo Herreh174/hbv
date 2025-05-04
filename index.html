@@ -5,149 +5,148 @@
   <title>Бронирование</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: auto; }
-    label { display: block; margin-top: 1em; }
-    input, select, textarea, button { width: 100%; padding: 8px; margin-top: 0.5em; }
-    #calendar { margin-top: 1em; }
-    .disabled-date { color: #aaa; text-decoration: line-through; }
-    #guestForm, #submitButton { display: none; }
+    label, select, input, textarea { display: block; width: 100%; margin-bottom: 10px; }
+    button { padding: 10px; }
+    .hidden { display: none; }
+    .disabled { opacity: 0.5; pointer-events: none; }
   </style>
 </head>
 <body>
-  <h2>Забронируйте номер</h2>
+  <h1>Забронировать номер</h1>
 
-  <label>Выберите номер:
-    <select id="roomSelect"></select>
-  </label>
+  <label>Выберите номер:</label>
+  <select id="roomSelect"></select>
 
-  <label>Количество гостей:
-    <input type="number" id="guestCount" min="1" />
-  </label>
+  <label>Количество гостей:</label>
+  <input type="number" id="guests" min="1" />
 
-  <label>Дата заезда:
-    <input type="date" id="checkIn" />
-  </label>
+  <label>Дата заезда:</label>
+  <input type="date" id="checkin" />
 
-  <label>Дата выезда:
-    <input type="date" id="checkOut" />
-  </label>
+  <label>Дата выезда:</label>
+  <input type="date" id="checkout" />
 
-  <div id="calendar"></div>
+  <button id="nextBtn" class="disabled">Перейти к вводу данных</button>
 
-  <button id="proceedButton" disabled>Перейти к вводу данных</button>
+  <div id="guestForm" class="hidden">
+    <label>ФИО:</label>
+    <input type="text" id="name" />
 
-  <div id="guestForm">
-    <label>ФИО:
-      <input type="text" id="name" />
-    </label>
-    <label>Телефон:
-      <input type="tel" id="phone" placeholder="8-(XXX)-XXX-XX-XX" pattern="8-\(\d{3}\)-\d{3}-\d{2}-\d{2}" />
-    </label>
-    <label>Email:
-      <input type="email" id="email" />
-    </label>
-    <label>Пожелания:
-      <textarea id="wishes"></textarea>
-    </label>
-    <button id="submitButton">Забронировать</button>
+    <label>Телефон:</label>
+    <input type="tel" id="phone" placeholder="8-(XXX)-XXX-XX-XX" />
+
+    <label>Email:</label>
+    <input type="email" id="email" />
+
+    <label>Пожелания по размещению:</label>
+    <textarea id="wishes"></textarea>
+
+    <button id="bookBtn" class="disabled">Забронировать</button>
   </div>
 
-  <div id="result"></div>
+  <div id="result" class="hidden"></div>
 
   <script>
-    const apiUrl = 'https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec';
-
+    const API_URL = 'https://script.google.com/macros/s/AKfycbxeUQLtEHL1Q6XIKnfx2A6_9b3CY-jVrswL2LLLWeNeq6bUKkHmZhYqzN6NYxeQxyusgA/exec';
+    let rooms = [];
     let selectedRoom = null;
-    let roomData = {};
-    let busyDates = [];
+    let unavailableDates = [];
 
-    document.addEventListener("DOMContentLoaded", () => {
-      fetch(`${apiUrl}?action=getRooms`)
-        .then(res => res.json())
-        .then(data => {
-          const roomSelect = document.getElementById("roomSelect");
-          data.forEach(room => {
-            roomData[room.room_id] = room;
-            const option = document.createElement("option");
-            option.value = room.room_id;
-            option.textContent = `${room.room_name} — ${room.capacity} гостей — ${room.price}₽/ночь`;
-            roomSelect.appendChild(option);
-          });
-        });
-
-      document.getElementById("roomSelect").addEventListener("change", async (e) => {
-        selectedRoom = e.target.value;
-        const res = await fetch(`${apiUrl}?action=getBusyDates&room_id=${selectedRoom}`);
-        busyDates = await res.json();
-        renderCalendar();
+    async function loadRooms() {
+      const res = await fetch(API_URL + '?action=getRooms');
+      rooms = await res.json();
+      const select = document.getElementById('roomSelect');
+      rooms.forEach(room => {
+        const option = document.createElement('option');
+        option.value = room.room_id;
+        option.textContent = `${room.room_name} — ${room.price}₽`;
+        select.appendChild(option);
       });
+    }
 
-      ["checkIn", "checkOut", "guestCount"].forEach(id =>
-        document.getElementById(id).addEventListener("change", validateInputs)
-      );
+    async function loadUnavailableDates(roomId) {
+      const res = await fetch(`${API_URL}?action=getAvailability&room_id=${roomId}`);
+      unavailableDates = await res.json();
+    }
 
-      document.getElementById("proceedButton").addEventListener("click", () => {
-        document.getElementById("guestForm").style.display = "block";
-        document.getElementById("submitButton").style.display = "block";
-      });
+    function validateDates() {
+      const checkin = document.getElementById('checkin').value;
+      const checkout = document.getElementById('checkout').value;
+      const guests = +document.getElementById('guests').value;
+      if (!checkin || !checkout || checkin >= checkout || guests < 1) return false;
 
-      document.getElementById("submitButton").addEventListener("click", submitBooking);
+      const check = new Date(checkin);
+      const out = new Date(checkout);
+      for (let d = new Date(check); d < out; d.setDate(d.getDate() + 1)) {
+        const formatted = d.toISOString().split('T')[0];
+        if (unavailableDates.includes(formatted)) return false;
+      }
+
+      const roomCapacity = +rooms.find(r => r.room_id === selectedRoom).capacity;
+      return guests <= roomCapacity;
+    }
+
+    function enableBookingStep() {
+      const valid = validateDates();
+      document.getElementById('nextBtn').classList.toggle('disabled', !valid);
+    }
+
+    document.getElementById('roomSelect').addEventListener('change', async (e) => {
+      selectedRoom = e.target.value;
+      await loadUnavailableDates(selectedRoom);
+      enableBookingStep();
     });
 
-    function renderCalendar() {
-      const cal = document.getElementById("calendar");
-      cal.innerHTML = "<strong>Недоступные даты:</strong><br>" + busyDates.join(', ');
-    }
+    ['checkin', 'checkout', 'guests'].forEach(id =>
+      document.getElementById(id).addEventListener('input', enableBookingStep)
+    );
 
-    function validateInputs() {
-      const checkIn = document.getElementById("checkIn").value;
-      const checkOut = document.getElementById("checkOut").value;
-      const guests = +document.getElementById("guestCount").value;
-      if (!selectedRoom || !checkIn || !checkOut || guests < 1) return disableProceed();
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      if (!validateDates()) return;
+      document.getElementById('guestForm').classList.remove('hidden');
+    });
 
-      const start = new Date(checkIn);
-      const end = new Date(checkOut);
-      const datesToCheck = [];
-      while (start < end) {
-        datesToCheck.push(start.toISOString().split('T')[0]);
-        start.setDate(start.getDate() + 1);
-      }
+    ['name', 'phone', 'email'].forEach(id =>
+      document.getElementById(id).addEventListener('input', () => {
+        const filled = ['name', 'phone', 'email'].every(id => document.getElementById(id).value.trim() !== '');
+        document.getElementById('bookBtn').classList.toggle('disabled', !filled);
+      })
+    );
 
-      const conflict = datesToCheck.some(date => busyDates.includes(date));
-      const exceedsCapacity = guests > roomData[selectedRoom].capacity;
+    document.getElementById('bookBtn').addEventListener('click', async () => {
+      const room = rooms.find(r => r.room_id === selectedRoom);
+      const checkin = document.getElementById('checkin').value;
+      const checkout = document.getElementById('checkout').value;
+      const guests = +document.getElementById('guests').value;
 
-      if (!conflict && !exceedsCapacity) {
-        document.getElementById("proceedButton").disabled = false;
-      } else {
-        disableProceed();
-      }
-    }
+      const days = (new Date(checkout) - new Date(checkin)) / (1000 * 60 * 60 * 24);
+      const total = days * room.price;
 
-    function disableProceed() {
-      document.getElementById("proceedButton").disabled = true;
-      document.getElementById("guestForm").style.display = "none";
-      document.getElementById("submitButton").style.display = "none";
-    }
-
-    async function submitBooking() {
-      const payload = {
-        action: "submitBooking",
+      const data = {
         room_id: selectedRoom,
-        guests: document.getElementById("guestCount").value,
-        checkIn: document.getElementById("checkIn").value,
-        checkOut: document.getElementById("checkOut").value,
-        name: document.getElementById("name").value,
-        phone: document.getElementById("phone").value,
-        email: document.getElementById("email").value,
-        wishes: document.getElementById("wishes").value
+        room_name: room.room_name,
+        guests,
+        price: room.price,
+        checkin,
+        checkout,
+        name: document.getElementById('name').value,
+        phone: document.getElementById('phone').value,
+        email: document.getElementById('email').value,
+        wishes: document.getElementById('wishes').value,
+        total
       };
 
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        body: JSON.stringify(payload)
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify(data)
       });
+
       const result = await res.json();
-      document.getElementById("result").innerHTML = `<strong>Бронирование успешно!</strong><br>ID: ${result.bookingId}`;
-    }
+      document.getElementById('result').innerHTML = `<h3>Успешно! ID брони: ${result.bookingId}</h3>`;
+      document.getElementById('result').classList.remove('hidden');
+    });
+
+    loadRooms();
   </script>
 </body>
 </html>
